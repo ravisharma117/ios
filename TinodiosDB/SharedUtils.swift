@@ -31,7 +31,8 @@ public class SharedUtils {
     static public let kPrefUseTLS = "use_tls_preference"
 
     // App Tinode api key.
-    private static let kApiKey = "AQEAAAABAAD_rAp4DJh05a1HAwFT3A6K"
+    // GEIA: API key of the Geia server (the API_KEY in its .env), not Tinode's public key.
+    private static let kApiKey = "AQAAAAABAAC5ApWzc4f_ptJ0btDXsBjS"
 
     static public let kAppDefaults = UserDefaults(suiteName: BaseDb.kAppGroupId)!
     static let kAppKeychain = KeychainWrapper(serviceName: "co.tinode.tinodios", accessGroup: BaseDb.kAppGroupId)
@@ -397,11 +398,18 @@ public class SharedUtils {
         task.resume()
     }
 
-    // Identifies device with Tinode server and fetches branding configuration code.
+    // GEIA: brand-code lookups go to OUR server (https://<host>/hosts/...), never to hosts.tinode.co.
+    // Nothing is published there, so every lookup answers 404 and the app ignores it.
+    private static var hostsBaseUrl: String {
+        let host = Bundle.main.object(forInfoDictionaryKey: "HOST_NAME") as? String ?? ""
+        return "https://\(host)/hosts/"
+    }
+
+    // Identifies device with the server and fetches branding configuration code.
     public static func identifyAndConfigureBranding() {
         let device = UIDevice.current.userInterfaceIdiom == .phone ? "iphone" : UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : ""
         let version = UIDevice.current.systemVersion
-        let url = URL(string: "https://hosts.tinode.co/whoami?os=ios-\(version)&dev=\(device)")!
+        let url = URL(string: "\(hostsBaseUrl)whoami?os=ios-\(version)&dev=\(device)")!
         let task = URLSession.shared.dataTask(with: URLRequest(url: url)) { data, response, error in
             guard let data = data, error == nil else {
                 BaseDb.log.info("Branding config response error: %@", (error?.localizedDescription ?? "Failed to self-identify"))
@@ -428,7 +436,7 @@ public class SharedUtils {
         }
         // Dummy url.
         // TODO: url should be based on the device fp (e.g. UIDevice.current.identifierForVendor).
-        let url = URL(string: "https://hosts.tinode.co/id/\(configCode)")!
+        let url = URL(string: "\(hostsBaseUrl)id/\(configCode)")!
 
         let task = URLSession.shared.dataTask(with: URLRequest(url: url)) { data, response, error in
             guard let data = data, error == nil else {

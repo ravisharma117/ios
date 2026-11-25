@@ -5,13 +5,15 @@
 // Include Pods config.
 #include "Pods/Target Support Files/Pods-Tinodios/Pods-Tinodios.release.xcconfig"
 
-// Server URL
-HOST_NAME = api.tinode.co
+// Server: the Geia test server. Replace with the production host once it exists (C1).
+// The API key in TinodiosDB/SharedUtils.swift (kApiKey) must be the API_KEY of the same server.
+HOST_NAME = 207.244.254.58
 // Use TLS (https, wss)
 USE_TLS = YES
 
 // App Settings
 APP_NAME = Tinode
+// TODO(C10): "Geia Messaging" / "Geia" once the client confirms the name under the icon.
 
 // Versioning. The values are automatically updated by a build script.
 GIT_TAG = 1.24.3
