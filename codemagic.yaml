@@ -1,0 +1,178 @@
+# Codemagic workflow: build the Geia iOS app for the iOS Simulator (arm64, no code signing) and
+# publish the zipped .app as a build artifact. It mirrors .github/workflows/ios-build.yml, and reuses
+# .github/scripts/inspect_project.py, which detects the workspace, scheme and Firebase file location
+# from the repository instead of hardcoding them.
+#
+# One-time setup in Codemagic: add this repository as an app, choose "codemagic.yaml" as the
+# configuration, and create the webhook (app settings > Webhooks) so that pushes start builds.
+# Builds can always be started by hand from the Codemagic UI.
+#
+# Optional: add an encrypted environment variable GOOGLE_SERVICE_INFO_PLIST_BASE64 (the real
+# GoogleService-Info.plist, base64-encoded) to the app and list its group under `environment.groups`
+# below. Without it a placeholder file is generated: the build works, but push notifications,
+# analytics and crash reporting do nothing in the resulting app.
+#
+# arm64 only: an x86_64 slice does not link, because Tinodios/CallViewController.swift (setupViews)
+# uses RTCEAGLVideoView on non-arm64 and the WebRTC-lib 139 binary no longer contains that class.
+
+workflows:
+  ios-simulator:
+    name: iOS Simulator build
+    # mac_mini_m2 is the machine type the free monthly minutes apply to.
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      # Pinned to match the GitHub Actions workflow. If Codemagic does not offer this version,
+      # use `latest` (a newer Xcode than the project was last upgraded with, 15.3).
+      xcode: "16.4"
+      cocoapods: default
+      vars:
+        # Release uses prod.xcconfig (Geia test server over TLS); Debug uses devel.xcconfig (localhost).
+        CONFIGURATION: Release
+        SIMULATOR_ARCHS: arm64
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: master
+          include: true
+          source: true
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Detect workspace, scheme and Firebase file location
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p logs artifacts
+          xcodebuild -version
+          swift --version
+          echo "CocoaPods $(pod --version)"
+          # The script appends KEY=value lines to $GITHUB_ENV; Codemagic's equivalent is $CM_ENV.
+          GITHUB_ENV="$CM_ENV" python3 .github/scripts/inspect_project.py
+
+      - name: Install CocoaPods dependencies
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          # Podfile.lock pins every version; this never runs 'pod update'.
+          for attempt in 1 2 3; do
+            echo "pod install (attempt $attempt of 3)"
+            if pod install 2>&1 | tee -a logs/pod-install.log; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "pod install failed after 3 attempts" >&2
+              exit 1
+            fi
+            echo "Retrying in 20 s (large binary pods sometimes fail to download)."
+            sleep 20
+          done
+
+      - name: Inspect build settings and provide GoogleService-Info.plist
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          settings=logs/build-settings.txt
+          if ! xcodebuild -showBuildSettings "$BUILD_CONTAINER_FLAG" "$BUILD_CONTAINER" \
+               -scheme "$SCHEME" -configuration "$CONFIGURATION" -sdk iphonesimulator \
+               > "$settings" 2> logs/build-settings.err; then
+            echo "Warning: could not read build settings: $(tail -n 3 logs/build-settings.err | tr '\n' ' ')"
+          fi
+          grep -E '^Build settings for|^ +(PRODUCT_NAME|PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|SWIFT_VERSION|HOST_NAME|USE_TLS) = ' "$settings" || true
+          bundle_id=$(awk -F' = ' '$1 ~ /^ +PRODUCT_BUNDLE_IDENTIFIER$/ {print $2; exit}' "$settings")
+
+          # The file is gitignored but the target copies it into the app, so the build fails without it.
+          if [ -z "${FIREBASE_PLIST_PATH:-}" ]; then
+            echo "The project does not reference GoogleService-Info.plist, nothing to do."
+            exit 0
+          fi
+          mkdir -p "$(dirname "$FIREBASE_PLIST_PATH")"
+          if [ -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$FIREBASE_PLIST_PATH"
+            plutil -lint "$FIREBASE_PLIST_PATH" > /dev/null
+            echo "Using the real Firebase configuration from GOOGLE_SERVICE_INFO_PLIST_BASE64."
+          elif [ -f "$FIREBASE_PLIST_PATH" ]; then
+            echo "Using $FIREBASE_PLIST_PATH from the repository."
+          else
+            cat > "$FIREBASE_PLIST_PATH" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>API_KEY</key><string>AIzaSyCIPLACEHOLDER00000000000000000000</string>
+            <key>GCM_SENDER_ID</key><string>000000000000</string>
+            <key>PLIST_VERSION</key><string>1</string>
+            <key>BUNDLE_ID</key><string>${bundle_id:-com.example.placeholder}</string>
+            <key>PROJECT_ID</key><string>ci-placeholder</string>
+            <key>STORAGE_BUCKET</key><string>ci-placeholder.appspot.com</string>
+            <key>IS_ADS_ENABLED</key><false/>
+            <key>IS_ANALYTICS_ENABLED</key><false/>
+            <key>IS_APPINVITE_ENABLED</key><false/>
+            <key>IS_GCM_ENABLED</key><true/>
+            <key>IS_SIGNIN_ENABLED</key><false/>
+            <key>GOOGLE_APP_ID</key><string>1:000000000000:ios:0000000000000000</string>
+          </dict>
+          </plist>
+          PLIST
+            plutil -lint "$FIREBASE_PLIST_PATH" > /dev/null
+            echo "No GOOGLE_SERVICE_INFO_PLIST_BASE64 set: generated a placeholder $FIREBASE_PLIST_PATH."
+          fi
+
+      - name: Build for iOS Simulator (code signing off)
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          echo "Building scheme '$SCHEME' ($CONFIGURATION) from $BUILD_CONTAINER for archs: $SIMULATOR_ARCHS"
+          # generic/platform=iOS Simulator needs no particular simulator device or OS to exist on the machine.
+          xcodebuild build \
+            "$BUILD_CONTAINER_FLAG" "$BUILD_CONTAINER" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$CM_BUILD_DIR/DerivedData" \
+            ARCHS="$SIMULATOR_ARCHS" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | tee logs/xcodebuild.log
+
+      - name: Verify and package the .app
+        script: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          products="$CM_BUILD_DIR/DerivedData/Build/Products/${CONFIGURATION}-iphonesimulator"
+          apps=$(find "$products" -maxdepth 1 -name '*.app' -type d)
+          if [ "$(printf '%s\n' "$apps" | grep -c .)" -ne 1 ]; then
+            echo "Expected exactly one .app in $products, found: ${apps:-none}" >&2
+            ls -la "$products" || true
+            exit 1
+          fi
+          app="$apps"
+          plist="$app/Info.plist"
+          pb() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null || echo "-"; }
+          found_archs=$(lipo -archs "$app/$(pb CFBundleExecutable)")
+          for wanted in $SIMULATOR_ARCHS; do
+            case " $found_archs " in
+              *" $wanted "*) ;;
+              *) echo "$wanted is not in the built binary (found: $found_archs)" >&2; exit 1 ;;
+            esac
+          done
+          echo "App               : $app"
+          echo "Bundle identifier : $(pb CFBundleIdentifier)"
+          echo "Version (build)   : $(pb CFBundleShortVersionString) ($(pb CFBundleVersion))"
+          echo "Minimum iOS       : $(pb MinimumOSVersion)"
+          echo "Architectures     : $found_archs"
+          echo "Size              : $(du -sh "$app" | cut -f1)"
+          # ditto keeps symlinks and permissions inside the embedded frameworks, which a plain zip would break.
+          ditto -c -k --keepParent "$app" "artifacts/$(basename "$app" .app)-${CONFIGURATION}-iphonesimulator.zip"
+          ls -lh artifacts
+
+    artifacts:
+      - artifacts/*.zip
+      - logs/*
