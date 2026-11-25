@@ -1,0 +1,406 @@
+# Builds the iOS app for the iOS Simulator on a GitHub-hosted macOS runner and
+# uploads the resulting .app (zipped) as a workflow artifact.
+#
+# No Mac, no Apple Developer account and no secrets are needed: code signing is
+# switched off, which is fine for the simulator. See .github/workflows/README.md
+# for how to run it, where the artifact is, and the known limitations.
+#
+# Project facts this workflow relies on (found by inspecting the repository; the
+# workspace, scheme and Firebase file location are detected at run time by
+# .github/scripts/inspect_project.py, nothing below hardcodes them):
+#   - CocoaPods only (Podfile + Podfile.lock); Pods/ is not committed
+#   - Swift 5 language mode, iOS deployment target 14.0
+#   - Debug / Release configurations; Release points at the Geia test server
+#   - Two build phases run Scripts/set_build_number.sh, which needs the full git history
+
+name: iOS Build (Simulator)
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: "Build configuration. Release = prod.xcconfig (Geia test server); Debug = devel.xcconfig (localhost)"
+        type: choice
+        options:
+          - Release
+          - Debug
+        default: Release
+      archs:
+        description: "Simulator architectures (default is universal: runs on Intel and Apple-silicon simulators)"
+        type: choice
+        options:
+          - arm64 x86_64
+          - arm64
+          - x86_64
+        default: arm64 x86_64
+      xcode_version:
+        description: "Xcode version installed on the runner, e.g. 16.4 or 26.3 (empty = workflow default)"
+        type: string
+        default: ""
+      workspace:
+        description: "Workspace or project to build (empty = detect automatically)"
+        type: string
+        default: ""
+      scheme:
+        description: "Scheme to build (empty = detect the shared application scheme)"
+        type: string
+        default: ""
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - "*.md"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "LICENSE"
+
+# Newer pushes to the same ref cancel a build that is still running.
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # macos-15 ships Xcode 16.0-16.4 and 26.x; 16.4 is its default and the closest
+  # match to this project (Swift 5 mode, last upgraded with Xcode 15.3).
+  DEFAULT_XCODE_VERSION: "16.4"
+
+jobs:
+  build:
+    name: Build for iOS Simulator
+    # Pinned on purpose (macos-latest moves to newer images). macos-14 is retired.
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # Inputs are only ever read through env vars, never pasted into scripts.
+      CONFIGURATION: ${{ inputs.configuration || 'Release' }}
+      ARCHS_INPUT: ${{ inputs.archs || 'arm64 x86_64' }}
+      XCODE_VERSION_INPUT: ${{ inputs.xcode_version }}
+      WORKSPACE_INPUT: ${{ inputs.workspace }}
+      SCHEME_INPUT: ${{ inputs.scheme }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Scripts/set_build_number.sh counts commits and reads tags, so it needs history.
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Select Xcode and show toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/logs"
+
+          wanted="${XCODE_VERSION_INPUT:-$DEFAULT_XCODE_VERSION}"
+          if ! printf '%s' "$wanted" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'; then
+            echo "::error title=Invalid Xcode version::'$wanted' is not a version number such as 16.4."
+            exit 1
+          fi
+
+          echo "Xcode versions installed on this runner:"
+          ls -d /Applications/Xcode*.app | sed 's/^/  /'
+
+          app="/Applications/Xcode_${wanted}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error title=Xcode $wanted not found::Not installed on this runner image (looked for $app). Use a version from the list above."
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
+
+          echo "::group::Toolchain"
+          sw_vers
+          xcodebuild -version
+          swift --version
+          echo "CocoaPods $(pod --version)"
+          python3 --version
+          echo "Runner image: ${ImageOS:-unknown} ${ImageVersion:-unknown}"
+          echo "::endgroup::"
+          echo "SELECTED_XCODE=$(xcodebuild -version | head -n 1)" >> "$GITHUB_ENV"
+
+      - name: Detect workspace, scheme and Firebase file location
+        run: python3 .github/scripts/inspect_project.py
+
+      - name: Restore CocoaPods cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install CocoaPods dependencies
+        run: |
+          set -euo pipefail
+          if [ ! -f Podfile ]; then
+            echo "No Podfile in the repository root, nothing to install."
+            exit 0
+          fi
+          # Podfile.lock pins every version; this never runs 'pod update'.
+          log="$RUNNER_TEMP/logs/pod-install.log"
+          for attempt in 1 2 3; do
+            echo "::group::pod install (attempt $attempt of 3)"
+            if pod install 2>&1 | tee -a "$log"; then
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error title=pod install failed::See the pod-install log in the build-logs artifact."
+              exit 1
+            fi
+            echo "pod install failed, retrying in 20 s (large binary pods sometimes fail to download)."
+            sleep 20
+          done
+
+          # A newer CocoaPods rewrites its own version line in Podfile.lock; anything else is real drift.
+          drift=$(git diff -U0 -- Podfile.lock | grep -E '^[+-][^+-]' | grep -v 'COCOAPODS:' || true)
+          if [ -n "$drift" ]; then
+            echo "::warning title=Podfile.lock changed::pod install resolved different versions than Podfile.lock pins. Commit the updated lock file."
+            echo "$drift"
+          fi
+          echo "Installed pods (from Podfile.lock):"
+          awk '/^PODS:/{p=1; next} /^[A-Z]/{p=0} p && /^  - [A-Za-z]/ && !/^  - [^ ]*\//' Podfile.lock | sed 's/:$//'
+
+      - name: Inspect build settings
+        run: |
+          set -euo pipefail
+          settings="$RUNNER_TEMP/logs/build-settings.txt"
+
+          # The configuration must exist in the project that owns the scheme.
+          configs=$(xcodebuild -list -json -project "$SCHEME_PROJECT" \
+            | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["project"]["configurations"]))')
+          if ! printf '%s\n' "$configs" | grep -qx "$CONFIGURATION"; then
+            echo "::error title=Unknown configuration::'$CONFIGURATION' is not a build configuration of $SCHEME_PROJECT. Available: $(echo $configs)"
+            exit 1
+          fi
+          echo "Build configurations: $(echo $configs)"
+
+          if ! xcodebuild -showBuildSettings "$BUILD_CONTAINER_FLAG" "$BUILD_CONTAINER" \
+               -scheme "$SCHEME" -configuration "$CONFIGURATION" -sdk iphonesimulator \
+               > "$settings" 2> "$RUNNER_TEMP/logs/build-settings.err"; then
+            echo "::warning title=Could not read build settings::$(tail -n 3 "$RUNNER_TEMP/logs/build-settings.err" | tr '\n' ' ')"
+          fi
+          grep -E '^Build settings for|^ +(PRODUCT_NAME|PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|SWIFT_VERSION|MARKETING_VERSION|CURRENT_PROJECT_VERSION|HOST_NAME|USE_TLS|CODE_SIGN_STYLE) = ' "$settings" || true
+
+          value() { awk -F' = ' -v k="$1" '$1 ~ "^ +"k"$" {print $2; exit}' "$settings"; }
+          {
+            echo "APP_BUNDLE_ID=$(value PRODUCT_BUNDLE_IDENTIFIER)"
+            echo "DEPLOYMENT_TARGET=$(value IPHONEOS_DEPLOYMENT_TARGET)"
+            echo "SWIFT_LANGUAGE_VERSION=$(value SWIFT_VERSION)"
+            echo "APP_SERVER=$(value HOST_NAME)"
+          } >> "$GITHUB_ENV"
+
+      - name: Provide GoogleService-Info.plist
+        env:
+          # Optional repository secret: the real file, base64-encoded. Never printed.
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          # The file is gitignored but the target copies it into the app, so the build fails without it.
+          if [ -z "${FIREBASE_PLIST_PATH:-}" ]; then
+            echo "The project does not reference GoogleService-Info.plist, nothing to do."
+            exit 0
+          fi
+          mkdir -p "$(dirname "$FIREBASE_PLIST_PATH")"
+
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+            printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$FIREBASE_PLIST_PATH"
+            plutil -lint "$FIREBASE_PLIST_PATH" > /dev/null \
+              || { echo "::error title=Invalid secret::GOOGLE_SERVICE_INFO_PLIST_BASE64 does not decode to a valid plist."; exit 1; }
+            echo "Using the real Firebase configuration from the GOOGLE_SERVICE_INFO_PLIST_BASE64 secret."
+          elif [ -f "$FIREBASE_PLIST_PATH" ]; then
+            echo "Using $FIREBASE_PLIST_PATH from the repository."
+          else
+            cat > "$FIREBASE_PLIST_PATH" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>API_KEY</key><string>AIzaSyCIPLACEHOLDER00000000000000000000</string>
+            <key>GCM_SENDER_ID</key><string>000000000000</string>
+            <key>PLIST_VERSION</key><string>1</string>
+            <key>BUNDLE_ID</key><string>${APP_BUNDLE_ID:-com.example.placeholder}</string>
+            <key>PROJECT_ID</key><string>ci-placeholder</string>
+            <key>STORAGE_BUCKET</key><string>ci-placeholder.appspot.com</string>
+            <key>IS_ADS_ENABLED</key><false/>
+            <key>IS_ANALYTICS_ENABLED</key><false/>
+            <key>IS_APPINVITE_ENABLED</key><false/>
+            <key>IS_GCM_ENABLED</key><true/>
+            <key>IS_SIGNIN_ENABLED</key><false/>
+            <key>GOOGLE_APP_ID</key><string>1:000000000000:ios:0000000000000000</string>
+          </dict>
+          </plist>
+          PLIST
+            plutil -lint "$FIREBASE_PLIST_PATH" > /dev/null
+            echo "::notice title=Placeholder Firebase config::No GOOGLE_SERVICE_INFO_PLIST_BASE64 secret is set, so a fake GoogleService-Info.plist was generated. The build works; push notifications, analytics and crash reporting will not."
+          fi
+
+      - name: Build for iOS Simulator (code signing off)
+        run: |
+          set -euo pipefail
+          if command -v xcbeautify > /dev/null; then
+            pretty=(xcbeautify --renderer github-actions)
+          else
+            echo "xcbeautify is not installed, showing raw xcodebuild output."
+            pretty=(cat)
+          fi
+
+          echo "Building scheme '$SCHEME' ($CONFIGURATION) from $BUILD_CONTAINER for archs: $ARCHS_INPUT"
+          # generic/platform=iOS Simulator needs no particular simulator device or OS to exist on the runner.
+          xcodebuild build \
+            "$BUILD_CONTAINER_FLAG" "$BUILD_CONTAINER" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/build.xcresult" \
+            ARCHS="$ARCHS_INPUT" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            | tee "$RUNNER_TEMP/logs/xcodebuild.log" | "${pretty[@]}"
+
+      - name: Locate and verify the .app
+        run: |
+          set -euo pipefail
+          products="$RUNNER_TEMP/DerivedData/Build/Products/${CONFIGURATION}-iphonesimulator"
+          apps=$(find "$products" -maxdepth 1 -name '*.app' -type d)
+          if [ "$(printf '%s\n' "$apps" | grep -c .)" -ne 1 ]; then
+            echo "::error title=.app not found::Expected exactly one .app in $products, found: ${apps:-none}"
+            ls -la "$products" || true
+            exit 1
+          fi
+          app="$apps"
+          plist="$app/Info.plist"
+          pb() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null || echo "-"; }
+
+          executable=$(pb CFBundleExecutable)
+          found_archs=$(lipo -archs "$app/$executable")
+          for wanted in $ARCHS_INPUT; do
+            case " $found_archs " in
+              *" $wanted "*) ;;
+              *) echo "::error title=Missing architecture::$wanted is not in the built binary (found: $found_archs)."; exit 1 ;;
+            esac
+          done
+          appex=$(find "$app/PlugIns" -maxdepth 1 -name '*.appex' 2>/dev/null | sed 's#.*/##' | tr '\n' ' ')
+          signature=$(codesign -dv "$app" 2>&1 | head -n 1 || true)
+          size=$(du -sh "$app" | cut -f1)
+
+          echo "App                 : $app"
+          echo "Bundle identifier   : $(pb CFBundleIdentifier)"
+          echo "Version (build)     : $(pb CFBundleShortVersionString) ($(pb CFBundleVersion))"
+          echo "Minimum iOS         : $(pb MinimumOSVersion)"
+          echo "Architectures       : $found_archs"
+          echo "App extensions      : ${appex:-none}"
+          echo "Signature           : $signature"
+          echo "Size                : $size"
+
+          {
+            echo "APP_PATH=$app"
+            echo "APP_NAME=$(basename "$app" .app)"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "## iOS Simulator build succeeded"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| App | \`$(basename "$app")\` ($size) |"
+            echo "| Bundle identifier | \`$(pb CFBundleIdentifier)\` |"
+            echo "| Version (build) | $(pb CFBundleShortVersionString) ($(pb CFBundleVersion)) |"
+            echo "| Configuration | $CONFIGURATION |"
+            echo "| Server compiled in | \`${APP_SERVER:-unknown}\` |"
+            echo "| Architectures | $found_archs |"
+            echo "| iOS deployment target | ${DEPLOYMENT_TARGET:-unknown} (installed: $(pb MinimumOSVersion)) |"
+            echo "| Swift language version | ${SWIFT_LANGUAGE_VERSION:-unknown} |"
+            echo "| App extensions | ${appex:-none} |"
+            echo "| Code signing | none (simulator build) |"
+            echo "| Xcode | $SELECTED_XCODE |"
+            echo "| Scheme / container | \`$SCHEME\` / \`$BUILD_CONTAINER\` |"
+            echo
+            echo "**Download:** scroll to **Artifacts** at the bottom of this page and download \`$(basename "$app" .app)-$CONFIGURATION-iphonesimulator.zip\`."
+            echo "It runs only in an iOS Simulator (see .github/workflows/README.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Package the .app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artifact"
+          zip="$RUNNER_TEMP/artifact/${APP_NAME}-${CONFIGURATION}-iphonesimulator.zip"
+          # ditto keeps symlinks and permissions inside the embedded frameworks, which a plain zip would break.
+          ditto -c -k --keepParent "$APP_PATH" "$zip"
+          echo "ARTIFACT_ZIP=$zip" >> "$GITHUB_ENV"
+          ls -lh "$zip"
+
+      - name: Upload the .app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # archive: false uploads the zip as-is, so the download is the zip itself
+          # and the artifact is named after the file.
+          path: ${{ env.ARTIFACT_ZIP }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          set +e
+          {
+            echo "## iOS Simulator build FAILED"
+            echo
+            echo "Full logs and the Xcode result bundle are in the **build-logs** and **build-xcresult** artifacts."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          build_log="$RUNNER_TEMP/logs/xcodebuild.log"
+          pod_log="$RUNNER_TEMP/logs/pod-install.log"
+          if [ -f "$build_log" ]; then
+            {
+              echo "### Errors from xcodebuild"
+              echo '```'
+              grep -E ' error: |^error: |ld: (error|symbol|framework|library)|fatal error|BUILD FAILED' "$build_log" | sort -u | head -n 40
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f "$pod_log" ]; then
+            {
+              echo "### Last lines of pod install"
+              echo '```'
+              tail -n 30 "$pod_log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The build did not get as far as running pod install or xcodebuild; see the failed step above." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "::error title=iOS build failed::See the job summary for the error list and download the build-logs artifact."
+          exit 0
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-logs
+          path: ${{ runner.temp }}/logs
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+      - name: Upload Xcode result bundle (failures only)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-xcresult
+          path: ${{ runner.temp }}/build.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
