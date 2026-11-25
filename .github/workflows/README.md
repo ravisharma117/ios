@@ -12,14 +12,14 @@ reads workflows from the root of the repository it hosts.
 ## Run it
 
 - **By hand:** GitHub repo > **Actions** > **iOS Build (Simulator)** > **Run workflow**. Choose the branch and,
-  if you want, a configuration, architectures or Xcode version. The first time on a fork you may have to click
+  if you want, a configuration or Xcode version. The first time on a fork you may have to click
   *I understand my workflows, go ahead and enable them*.
 - **Automatically:** every push to `main` or `master` (the repo's default branch is `master`). Pushes that only
   change Markdown files, `LICENSE` or issue templates are skipped. A newer push cancels a build still running
   on the same branch.
 
-Inputs (all optional): `configuration` (`Release` default, or `Debug`), `archs` (`arm64 x86_64` default,
-`arm64`, `x86_64`), `xcode_version` (default 16.4), `workspace`, `scheme` (empty = detected).
+Inputs (all optional): `configuration` (`Release` default, or `Debug`), `xcode_version` (default 16.4),
+`workspace`, `scheme` (empty = detected). The build is always arm64 (see Limitations).
 
 `Release` uses `prod.xcconfig` (the Geia test server over TLS); `Debug` uses `devel.xcconfig` (`127.0.0.1:6060`,
 which a cloud simulator cannot reach), so `Release` is the useful default.
@@ -72,8 +72,18 @@ the file base64-encoded, for example in PowerShell:
   number from the commit count. The repo has no tags, so the marketing version in CI may be empty or odd. This
   does not affect a simulator build.
 - **UI tests are not run;** the workflow only builds.
-- **Time and cost:** a cold run downloads about 260 MB of MobileVLCKit plus other pods and compiles two
-  architectures, so expect a long first run; later runs reuse the pod cache. macOS minutes are free on public
-  repositories and billed at a 10x rate on private ones.
+- **arm64 simulators only.** The `.app` runs on Apple-silicon Macs' simulators and in hosted services that run
+  ARM simulators (Appetize.io recommends ARM builds). It does not run on an Intel Mac's simulator: the x86_64
+  slice cannot link, because `Tinodios/CallViewController.swift` (`setupViews`) uses `RTCEAGLVideoView` on
+  non-arm64 and the WebRTC-lib 139 binary no longer contains that class. Fixing it means changing that code to
+  `RTCMTLVideoView` on simulators; that has not been done. To retry x86_64, set `SIMULATOR_ARCHS` in the
+  workflow.
+- **Time and cost:** the first run measured about 5 minutes of job time (pod install about 1.5 minutes, the
+  rest build), plus up to roughly 5 minutes waiting for a macOS runner, which is not billed. A cold pod cache
+  adds the 260 MB MobileVLCKit download. macOS minutes are free on public repositories; on private ones they
+  draw from the plan's monthly dollar allowance at a much higher per-minute rate than Linux.
+- **Podfile.lock:** the runner's CocoaPods (1.17) is newer than the one that wrote the lock file (1.15.2), so
+  `pod install` may rewrite it. The workflow reports what changed as a warning and in `podfile-lock.diff` in
+  the `build-logs` artifact; it never fails the build for it.
 - **Runner pinning:** `macos-15` and Xcode 16.4 are fixed on purpose. Update `runs-on` and
   `DEFAULT_XCODE_VERSION` when GitHub retires that image (`macos-14` was retired on 2 November 2026).

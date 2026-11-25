@@ -25,14 +25,6 @@ on:
           - Release
           - Debug
         default: Release
-      archs:
-        description: "Simulator architectures (default is universal: runs on Intel and Apple-silicon simulators)"
-        type: choice
-        options:
-          - arm64 x86_64
-          - arm64
-          - x86_64
-        default: arm64 x86_64
       xcode_version:
         description: "Xcode version installed on the runner, e.g. 16.4 or 26.3 (empty = workflow default)"
         type: string
@@ -67,6 +59,10 @@ env:
   # macos-15 ships Xcode 16.0-16.4 and 26.x; 16.4 is its default and the closest
   # match to this project (Swift 5 mode, last upgraded with Xcode 15.3).
   DEFAULT_XCODE_VERSION: "16.4"
+  # arm64 only: Apple-silicon simulators (and hosted ones such as Appetize.io) are arm64. An x86_64 slice
+  # does not link: Tinodios/CallViewController.swift (setupViews) uses RTCEAGLVideoView on non-arm64, and the
+  # WebRTC-lib 139 binary no longer contains that class ("Undefined symbols ... RTCEAGLVideoView").
+  SIMULATOR_ARCHS: "arm64"
 
 jobs:
   build:
@@ -77,7 +73,6 @@ jobs:
     env:
       # Inputs are only ever read through env vars, never pasted into scripts.
       CONFIGURATION: ${{ inputs.configuration || 'Release' }}
-      ARCHS_INPUT: ${{ inputs.archs || 'arm64 x86_64' }}
       XCODE_VERSION_INPUT: ${{ inputs.xcode_version }}
       WORKSPACE_INPUT: ${{ inputs.workspace }}
       SCHEME_INPUT: ${{ inputs.scheme }}
@@ -159,10 +154,19 @@ jobs:
             sleep 20
           done
 
-          # A newer CocoaPods rewrites its own version line in Podfile.lock; anything else is real drift.
+          # The runner's CocoaPods is newer than the one that wrote Podfile.lock, so the file may be rewritten.
+          # Say what kind of change it is: pinned pod versions (matters) or checksums/formatting (cosmetic).
+          git diff -- Podfile.lock > "$RUNNER_TEMP/logs/podfile-lock.diff" || true
           drift=$(git diff -U0 -- Podfile.lock | grep -E '^[+-][^+-]' | grep -v 'COCOAPODS:' || true)
           if [ -n "$drift" ]; then
-            echo "::warning title=Podfile.lock changed::pod install resolved different versions than Podfile.lock pins. Commit the updated lock file."
+            if printf '%s\n' "$drift" | grep -Eq '^[+-]  - "?[A-Za-z][^ ]* \([0-9]'; then
+              headline="pinned pod versions changed"
+            else
+              headline="only checksums or formatting changed, pod versions are the same"
+            fi
+            # Annotation text must be one line, with newlines encoded as %0A.
+            sample=$(printf '%s\n' "$drift" | head -n 6 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::warning title=Podfile.lock changed::pod install rewrote Podfile.lock: $headline. First changed lines:%0A${sample}Full diff: build-logs artifact, podfile-lock.diff."
             echo "$drift"
           fi
           echo "Installed pods (from Podfile.lock):"
@@ -252,7 +256,7 @@ jobs:
             pretty=(cat)
           fi
 
-          echo "Building scheme '$SCHEME' ($CONFIGURATION) from $BUILD_CONTAINER for archs: $ARCHS_INPUT"
+          echo "Building scheme '$SCHEME' ($CONFIGURATION) from $BUILD_CONTAINER for archs: $SIMULATOR_ARCHS"
           # generic/platform=iOS Simulator needs no particular simulator device or OS to exist on the runner.
           xcodebuild build \
             "$BUILD_CONTAINER_FLAG" "$BUILD_CONTAINER" \
@@ -262,7 +266,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -resultBundlePath "$RUNNER_TEMP/build.xcresult" \
-            ARCHS="$ARCHS_INPUT" \
+            ARCHS="$SIMULATOR_ARCHS" \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -286,7 +290,7 @@ jobs:
 
           executable=$(pb CFBundleExecutable)
           found_archs=$(lipo -archs "$app/$executable")
-          for wanted in $ARCHS_INPUT; do
+          for wanted in $SIMULATOR_ARCHS; do
             case " $found_archs " in
               *" $wanted "*) ;;
               *) echo "::error title=Missing architecture::$wanted is not in the built binary (found: $found_archs)."; exit 1 ;;
