@@ -172,7 +172,7 @@ class LoginViewController: UIViewController {
                         Cache.log.error("LoginVC - login failed: %@", err.localizedDescription)
                         var toastMsg: String
                         if let tinodeErr = err as? TinodeError {
-                            toastMsg = "Tinode: \(tinodeErr.description)"
+                            toastMsg = "Geia Messaging: \(tinodeErr.description)"
                         } else {
                             let (hostName, _) = Tinode.getConnectionParams()
                             toastMsg = String(format: NSLocalizedString("Couldn't connect to server at %@: %@", comment: "Error message"), hostName, err.localizedDescription)

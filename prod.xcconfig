@@ -12,8 +12,8 @@ HOST_NAME = 207.244.254.58
 USE_TLS = YES
 
 // App Settings
-APP_NAME = Tinode
-// TODO(C10): "Geia Messaging" / "Geia" once the client confirms the name under the icon.
+APP_NAME = Geia
+// Name under the icon: "Geia" (client item C10 may still change it; also CFBundleDisplayName in Tinodios/Info.plist).
 
 // Versioning. The values are automatically updated by a build script.
 GIT_TAG = 1.24.3

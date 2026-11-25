@@ -4,12 +4,12 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>co.tinode.tinodios</string>
+		<string>com.geia.messaging</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Tinode</string>
+	<string>Geia</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -31,15 +31,15 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Tinode takes photos with the camera to use as avatar or to send them to your contacts</string>
+	<string>Geia Messaging takes photos with the camera to use as avatar or to send them to your contacts</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Tinode uses microphone to record audio messages you send to your contacts</string>
+	<string>Geia Messaging uses microphone to record audio messages you send to your contacts</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Tinode sends only emails and phone numbers to the Tinode server to help you connect with other users</string>
+	<string>Geia Messaging sends only emails and phone numbers to the Geia Messaging server to help you connect with other users</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Images and pictures from Tinode can be saved in the photo library</string>
+	<string>Images and pictures from Geia Messaging can be saved in the photo library</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Tinode needs access to your photos to let you you send them to your contacts</string>
+	<string>Geia Messaging needs access to your photos to let you you send them to your contacts</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

@@ -144,9 +144,9 @@ class AddByIDViewController: UIViewController {
 extension AddByIDViewController: QRScannerDelegate {
     func qrScanner(didScanCode codeValue: String?) {
         guard let code = codeValue else {
-            Cache.log.error("Invalid Tinode topic QR code")
+            Cache.log.error("Invalid Geia Messaging topic QR code")
             DispatchQueue.main.async {
-                UiUtils.showToast(message: "Invalid Tinode topic QR code")
+                UiUtils.showToast(message: "Invalid Geia Messaging topic QR code")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
                 // Restart QR scanner.

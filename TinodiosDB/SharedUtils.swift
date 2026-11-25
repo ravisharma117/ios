@@ -35,7 +35,7 @@ public class SharedUtils {
     private static let kApiKey = "AQAAAAABAAC5ApWzc4f_ptJ0btDXsBjS"
 
     static public let kAppDefaults = UserDefaults(suiteName: BaseDb.kAppGroupId)!
-    static let kAppKeychain = KeychainWrapper(serviceName: "co.tinode.tinodios", accessGroup: BaseDb.kAppGroupId)
+    static let kAppKeychain = KeychainWrapper(serviceName: "com.geia.messaging", accessGroup: BaseDb.kAppGroupId)
 
     // Keys we store in keychain.
     static let kTokenKey = "co.tinode.token"

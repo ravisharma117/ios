@@ -1046,7 +1046,7 @@
                         </connections>
                     </tableView>
                     <toolbarItems/>
-                    <navigationItem key="navigationItem" title="Tinode" id="Rgo-YL-uPZ">
+                    <navigationItem key="navigationItem" title="Geia Messaging" id="Rgo-YL-uPZ">
                         <barButtonItem key="leftBarButtonItem" title="Profile" id="rlG-v4-QUc">
                             <connections>
                                 <segue destination="Pnk-9m-ZVg" kind="show" id="fsg-RJ-g97"/>
@@ -1858,7 +1858,7 @@
                                                 <constraint firstAttribute="width" secondItem="0kO-I6-ZCC" secondAttribute="height" id="wTd-ui-2UG"/>
                                             </constraints>
                                         </imageView>
-                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Tinode" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="ZQJ-Ja-aBa">
+                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Geia Messaging" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="ZQJ-Ja-aBa">
                                             <rect key="frame" x="23.999999999999996" y="0.0" width="52.666666666666657" height="24"/>
                                             <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                             <nil key="textColor"/>
@@ -1896,7 +1896,7 @@
                                                                 <constraint firstAttribute="width" secondItem="cNH-0I-Scl" secondAttribute="height" id="gb0-TN-dXr"/>
                                                             </constraints>
                                                         </imageView>
-                                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Tinode" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="HCG-mB-BeX" userLabel="Service Name">
+                                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Geia Messaging" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="HCG-mB-BeX" userLabel="Service Name">
                                                             <rect key="frame" x="13.666666666666657" y="136" width="100.66666666666667" height="40.666666666666657"/>
                                                             <fontDescription key="fontDescription" style="UICTFontTextStyleTitle0"/>
                                                             <nil key="textColor"/>
@@ -2210,7 +2210,7 @@
                                                             <constraint firstAttribute="width" constant="64" id="M5Q-nj-BqN"/>
                                                         </constraints>
                                                     </imageView>
-                                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" horizontalCompressionResistancePriority="751" verticalCompressionResistancePriority="752" text="Tinode" textAlignment="center" lineBreakMode="clip" baselineAdjustment="alignBaselines" minimumScaleFactor="0.25" translatesAutoresizingMaskIntoConstraints="NO" id="BS4-zj-4bf">
+                                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" horizontalCompressionResistancePriority="751" verticalCompressionResistancePriority="752" text="Geia Messaging" textAlignment="center" lineBreakMode="clip" baselineAdjustment="alignBaselines" minimumScaleFactor="0.25" translatesAutoresizingMaskIntoConstraints="NO" id="BS4-zj-4bf">
                                                         <rect key="frame" x="80" y="38" width="160" height="44"/>
                                                         <fontDescription key="fontDescription" name="Avenir-Medium" family="Avenir" pointSize="32"/>
                                                         <color key="textColor" red="0.22352941176470587" green="0.28627450980392155" blue="0.6705882352941176" alpha="1" colorSpace="calibratedRGB"/>
@@ -2329,7 +2329,7 @@
                                             <constraint firstAttribute="width" secondItem="rpj-u0-tf2" secondAttribute="height" id="7uM-s1-kJI"/>
                                         </constraints>
                                     </imageView>
-                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Tinode" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="zCU-jx-lsJ">
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Geia Messaging" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="zCU-jx-lsJ">
                                         <rect key="frame" x="23.999999999999996" y="0.0" width="52.666666666666657" height="24"/>
                                         <fontDescription key="fontDescription" type="system" pointSize="17"/>
                                         <nil key="textColor"/>

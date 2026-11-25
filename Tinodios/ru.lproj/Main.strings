@@ -163,8 +163,8 @@
 /* Class = "UITableViewSection"; headerTitle = "Password reset"; ObjectID = "BRf-xV-zvt"; */
 "BRf-xV-zvt.headerTitle" = "Пароль изменен";
 
-/* Class = "UILabel"; text = "Tinode"; ObjectID = "BS4-zj-4bf"; */
-"BS4-zj-4bf.text" = "Tinode";
+/* Class = "UILabel"; text = "Geia Messaging"; ObjectID = "BS4-zj-4bf"; */
+"BS4-zj-4bf.text" = "Geia Messaging";
 
 /* Class = "UITableViewSection"; headerTitle = "Contacts"; ObjectID = "bvE-OV-sy1"; */
 "bvE-OV-sy1.headerTitle" = "Контакты";
@@ -277,8 +277,8 @@
 /* Class = "UINavigationItem"; title = "Video Preview"; ObjectID = "Hah-A8-0yd"; */
 "Hah-A8-0yd.title" = "Превью видео";
 
-/* Class = "UILabel"; text = "Tinode"; ObjectID = "HCG-mB-BeX"; */
-"HCG-mB-BeX.text" = "Tinode";
+/* Class = "UILabel"; text = "Geia Messaging"; ObjectID = "HCG-mB-BeX"; */
+"HCG-mB-BeX.text" = "Geia Messaging";
 
 /* Class = "UITextField"; placeholder = "Configuration Code"; ObjectID = "hDW-u7-vzK"; */
 "hDW-u7-vzK.placeholder" = "Код конфигурации";
@@ -457,8 +457,8 @@
 /* Class = "UITableViewSection"; headerTitle = "Actions"; ObjectID = "raq-d6-2nI"; */
 "raq-d6-2nI.headerTitle" = "Действия";
 
-/* Class = "UINavigationItem"; title = "Tinode"; ObjectID = "Rgo-YL-uPZ"; */
-"Rgo-YL-uPZ.title" = "Tinode";
+/* Class = "UINavigationItem"; title = "Geia Messaging"; ObjectID = "Rgo-YL-uPZ"; */
+"Rgo-YL-uPZ.title" = "Geia Messaging";
 
 /* Class = "UIBarButtonItem"; title = "Profile"; ObjectID = "rlG-v4-QUc"; */
 "rlG-v4-QUc.title" = "Профиль";
@@ -580,8 +580,8 @@
 /* Class = "UILabel"; text = "Account and Security"; ObjectID = "z08-iK-CeG"; */
 "z08-iK-CeG.text" = "Аккаунт и безопасность";
 
-/* Class = "UILabel"; text = "Tinode"; ObjectID = "zCU-jx-lsJ"; */
-"zCU-jx-lsJ.text" = "Tinode";
+/* Class = "UILabel"; text = "Geia Messaging"; ObjectID = "zCU-jx-lsJ"; */
+"zCU-jx-lsJ.text" = "Geia Messaging";
 
 /* Class = "UILabel"; text = "Others can find group by these tags"; ObjectID = "Zdw-nR-1tB"; */
 "Zdw-nR-1tB.text" = "Тэги для поиска";
@@ -595,8 +595,8 @@
 /* Class = "UILabel"; text = "Privacy policy"; ObjectID = "Zn8-7V-BcX"; */
 "Zn8-7V-BcX.text" = "Политика конфиденциальности";
 
-/* Class = "UILabel"; text = "Tinode"; ObjectID = "ZQJ-Ja-aBa"; */
-"ZQJ-Ja-aBa.text" = "Tinode";
+/* Class = "UILabel"; text = "Geia Messaging"; ObjectID = "ZQJ-Ja-aBa"; */
+"ZQJ-Ja-aBa.text" = "Geia Messaging";
 
 /* Class = "UITextField"; placeholder = "Password"; ObjectID = "ZQy-2N-acy"; */
 "ZQy-2N-acy.placeholder" = "Пароль";

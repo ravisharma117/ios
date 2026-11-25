@@ -57,7 +57,7 @@ extension BrandingViewController: QRScannerDelegate {
         guard let code = codeValue else {
             Cache.log.error("Invalid host QR code")
             DispatchQueue.main.async {
-                UiUtils.showToast(message: "Invalid Tinode configuration QR code")
+                UiUtils.showToast(message: "Invalid Geia Messaging configuration QR code")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
                 // Restart QR scanner.

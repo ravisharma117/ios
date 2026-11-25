@@ -78,10 +78,8 @@
 "Change permissions" = "修改權限";
 
 /* Invitation subject */
-"Check out Tinode Messenger" = "試試 Tinode Messenger";
 
 /* Invitation body */
-"Check out Tinode Messenger: https://tinode.co/" = "試試 Tinode Messenger：https://tinode.co/";
 
 /* Alert title */
 "Clear all messages?" = "確定要清除所有訊息嗎？";
